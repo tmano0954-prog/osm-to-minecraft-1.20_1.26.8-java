@@ -1,0 +1,8 @@
+# python_scripts/requirements.txt
+# Dependencies for Python Pycairo vector renderers and OSM utilities
+
+pycairo>=1.25.0
+requests>=2.31.0
+pillow>=10.0.0
+numpy>=1.26.0
+shapely>=2.0.0

@@ -1,0 +1,14 @@
+# Rust build targets and compiled WASM output
+/rust_engine/target/
+/frontend/wasm/*
+!/frontend/wasm/.gitkeep
+
+# IDE and OS metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temp files and log outputs
+*.log
+*.tmp

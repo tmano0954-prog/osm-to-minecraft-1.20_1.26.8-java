@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenStreetMap Voxel Exporter</title>
+
+  <!-- Leaflet CSS -->
+  <link 
+    rel="stylesheet" 
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+    crossorigin="" 
+  />
+
+  <!-- Leaflet Geoman CSS (Drawing & Dragging Toolbar) -->
+  <link 
+    rel="stylesheet" 
+    href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" 
+  />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #1e1e2e;
+      color: #cdd6f4;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar Panel */
+    #sidebar {
+      width: 380px;
+      height: 100vh;
+      background-color: #181825;
+      border-right: 1px solid #313244;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      gap: 20px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
+    }
+
+    #sidebar h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #cba6f7;
+      border-bottom: 1px solid #313244;
+      padding-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #a6adc8;
+      margin-bottom: 8px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.9rem;
+      color: #bac2de;
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid #45475a;
+      background-color: #313244;
+      color: #cdd6f4;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: #cba6f7;
+    }
+
+    .coord-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button.btn-primary {
+      background-color: #a6e3a1;
+      color: #11111b;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button.btn-primary:hover {
+      background-color: #94e2d5;
+    }
+
+    button.btn-secondary {
+      background-color: #45475a;
+      color: #cdd6f4;
+      border: none;
+      cursor: pointer;
+    }
+
+    button.btn-secondary:hover {
+      background-color: #585b70;
+    }
+
+    /* Right Map Panel */
+    #map-container {
+      flex: 1;
+      height: 100vh;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Status Bar Overlay */
+    #status-overlay {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(24, 24, 37, 0.9);
+      border: 1px solid #45475a;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #a6adc8;
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Left Sidebar Controls -->
+  <aside id="sidebar">
+    <h1>OSM Map Exporter</h1>
+
+    <div class="control-group">
+      <div class="section-title">Bounding Box (Coordinates)</div>
+      <div class="coord-grid">
+        <div>
+          <label for="lat-min">Min Lat</label>
+          <input type="number" id="lat-min" step="0.0001" placeholder="28.5300" />
+        </div>
+        <div>
+          <label for="lat-max">Max Lat</label>
+          <input type="number" id="lat-max" step="0.0001" placeholder="28.5450" />
+        </div>
+        <div>
+          <label for="lon-min">Min Lon</label>
+          <input type="number" id="lon-min" step="0.0001" placeholder="-81.3850" />
+        </div>
+        <div>
+          <label for="lon-max">Max Lon</label>
+          <input type="number" id="lon-max" step="0.0001" placeholder="-81.3700" />
+        </div>
+      </div>
+      <button class="btn-secondary" id="btn-use-bounds">Use Current View</button>
+    </div>
+
+    <div class="control-group">
+      <div class="section-title">Target Minecraft Version</div>
+      <label for="mc-version-select">Format Target</label>
+      <select id="mc-version-select">
+        <option value="range_120_1268">All Versions (1.20 to 1.26.8 Zip DataPack)</option>
+        <option value="java_120">Minecraft 1.20 - 1.20.6 (.nbt DataPack)</option>
+        <option value="java_121">Minecraft 1.21 Series (.nbt DataPack)</option>
+        <option value="java_1268">Minecraft 1.26.8 Modern Spec (.nbt DataPack)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <div class="section-title">Generation Settings</div>
+      <label for="scale-select">Block Scale Ratio</label>
+      <select id="scale-select">
+        <option value="1">1:1 Scale (1 meter = 1 block)</option>
+        <option value="2">1:2 Scale (0.5 meter = 1 block)</option>
+        <option value="0.5">2:1 Scale (2 meters = 1 block)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label for="preset-select">Area Preset</label>
+      <select id="preset-select">
+        <option value="orlando">Downtown Orlando, FL</option>
+        <option value="skylake">Sky Lake, FL</option>
+        <option value="custom">Custom Location</option>
+      </select>
+    </div>
+
+    <div class="control-group" style="margin-top: auto;">
+      <button class="btn-primary" id="btn-export">Export Zip Archive</button>
+    </div>
+  </aside>
+
+  <!-- Right Map View -->
+  <main id="map-container">
+    <div id="map"></div>
+    <div id="status-overlay">Center: <span id="coords-display">28.5383, -81.3792</span> | Zoom: <span id="zoom-display">14</span></div>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script 
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+    crossorigin="">
+  </script>
+
+  <!-- Leaflet Geoman JS (Drawing & Dragging Toolbar) -->
+  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
+
+  <!-- JSZip Library for generating .zip archives -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <script>
+    // Initial coordinates (Downtown Orlando)
+    const initialLat = 28.5383;
+    const initialLng = -81.3792;
+    const initialZoom = 14;
+
+    // Initialize Leaflet Map
+    const map = L.map('map').setView([initialLat, initialLng], initialZoom);
+
+    // OpenStreetMap Tile Layer
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Enable Geoman Drag/Draw Toolbar on top-left
+    map.pm.addControls({
+      position: 'topleft',
+      drawMarker: false,
+      drawPolyline: false,
+      drawCircleMarker: false,
+      drawPolygon: false,
+      drawCircle: false,
+      drawRectangle: true,
+      editMode: true,
+      dragMode: true,
+      removalMode: true
+    });
+
+    // Dynamic Element References
+    const latMinEl = document.getElementById('lat-min');
+    const latMaxEl = document.getElementById('lat-max');
+    const lonMinEl = document.getElementById('lon-min');
+    const lonMaxEl = document.getElementById('lon-max');
+    const coordsDisplay = document.getElementById('coords-display');
+    const zoomDisplay = document.getElementById('zoom-display');
+
+    // Sync input fields when drawing or moving shapes on the map
+    map.on('pm:create', (e) => {
+      const layer = e.layer;
+      
+      const updateInputsFromLayer = () => {
+        const bounds = layer.getBounds();
+        latMinEl.value = bounds.getSouth().toFixed(4);
+        latMaxEl.value = bounds.getNorth().toFixed(4);
+        lonMinEl.value = bounds.getWest().toFixed(4);
+        lonMaxEl.value = bounds.getEast().toFixed(4);
+      };
+
+      updateInputsFromLayer();
+      layer.on('pm:dragend pm:edit', updateInputsFromLayer);
+    });
+
+    // Sync input fields with current map viewport bounds
+    function updateBoundsDisplay() {
+      const bounds = map.getBounds();
+      const center = map.getCenter();
+
+      latMinEl.value = bounds.getSouth().toFixed(4);
+      latMaxEl.value = bounds.getNorth().toFixed(4);
+      lonMinEl.value = bounds.getWest().toFixed(4);
+      lonMaxEl.value = bounds.getEast().toFixed(4);
+
+      coordsDisplay.textContent = `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
+      zoomDisplay.textContent = map.getZoom();
+    }
+
+    map.on('moveend', updateBoundsDisplay);
+    map.on('zoomend', updateBoundsDisplay);
+    document.getElementById('btn-use-bounds').addEventListener('click', updateBoundsDisplay);
+
+    document.getElementById('preset-select').addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === 'orlando') {
+        map.setView([28.5383, -81.3792], 14);
+      } else if (val === 'skylake') {
+        map.setView([28.4622, -81.3850], 15);
+      }
+    });
+
+    // Export Functionality: Zip layout scoped specifically for MC 1.20 to 1.26.8
+    document.getElementById('btn-export').addEventListener('click', async () => {
+      const zip = new JSZip();
+      const targetVer = document.getElementById('mc-version-select').value;
+
+      const boundsData = {
+        minLat: parseFloat(latMinEl.value),
+        maxLat: parseFloat(latMaxEl.value),
+        minLon: parseFloat(lonMinEl.value),
+        maxLon: parseFloat(lonMaxEl.value),
+        scale: parseFloat(document.getElementById('scale-select').value),
+        targetVersion: targetVer,
+        versionRange: "1.20 - 1.26.8",
+        timestamp: new Date().toISOString()
+      };
+
+      // 1. Common Metadata
+      zip.file("bounding_box.json", JSON.stringify(boundsData, null, 2));
+
+      // 2. DataPack root pack.mcmeta configured for 1.20 - 1.26.8
+      zip.file("pack.mcmeta", JSON.stringify({
+        pack: {
+          pack_format: 48,
+          description: "OSM Generated Voxel Structure Data (MC 1.20 - 1.26.8)"
+        }
+      }, null, 2));
+
+      // 3. Modern NBT Structure Directory structure
+      const structuresFolder = zip.folder("data").folder("osm_exporter").folder("structure");
+      
+      // Included structure metadata & placeholder NBT data file
+      structuresFolder.file("area_bounds.json", JSON.stringify(boundsData, null, 2));
+      structuresFolder.file("export_area.nbt", "BINARY_NBT_STRUCTURE_DATA_1_20_TO_1_26_8");
+
+      // Generate Zip File Blob
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+
+      // Trigger Direct Native File Download
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = URL.createObjectURL(zipBlob);
+      downloadAnchor.download = `mc_osm_datapack_1.20-1.26.8_${Date.now()}.zip`;
+      
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      document.body.removeChild(downloadAnchor);
+      URL.revokeObjectURL(downloadAnchor.href);
+    });
+
+    updateBoundsDisplay();
+  </script>
+</body>
+</html>
